@@ -179,7 +179,7 @@ public class JobMain {
         SingleOutputStreamOperator<DFTube> dfstream = tube30sPeriodDS
                 .returns(DFTube.class)
                 .assignTimestampsAndWatermarks(watermarkGenerator)
-                .keyBy("id")
+                .keyBy("id", "dataVarAllRunCount")
                 .timeWindow(Time.hours(1), Time.minutes(5))
                 .minBy("dataVarAllRunCount");
 
