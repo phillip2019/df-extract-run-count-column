@@ -4,6 +4,7 @@ import com.aikosolar.bigdata.df.util.MapUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.ReduceFunction;
@@ -19,18 +20,22 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
+import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.streaming.api.functions.TimestampAssigner;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer010;
+import org.apache.flink.util.Collector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 import javax.sql.DataSource;
+import java.io.IOException;
 import java.io.InputStream;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * @author xiaowei.song
@@ -41,12 +46,26 @@ public class JobMain {
 
     public static final String PROPERTIES_FILE_PATH = "application.properties";
 
-    public static void main(String[] args) throws Exception {
+    public static ParameterTool parameterTool = null;
+
+    static {
         ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         InputStream inputStream = classLoader
                 .getResourceAsStream(PROPERTIES_FILE_PATH);
-        final ParameterTool parameterTool = ParameterTool.fromPropertiesFile(inputStream);
+        try {
+            parameterTool = ParameterTool.fromPropertiesFile(inputStream);
+        } catch (IOException e) {
+            e.printStackTrace();
+            System.err.println("加载配置文件失败, properties file path " + PROPERTIES_FILE_PATH);
+            System.exit(1);
+        }
 
+    }
+
+    public static Map<String, Map<Integer, Long>> tubeRunCountTestTimeMap = new ConcurrentHashMap<>(6);
+
+
+    public static void main(String[] args) throws Exception {
         if (parameterTool.getNumberOfParameters() < 1) {
             return;
         }
@@ -160,7 +179,6 @@ public class JobMain {
                             if (!StringUtils.isNumeric(dfTube.clock)) {
                                 dfTube.clock = "1970010101010100";
                             }
-                            System.out.println(dfTube.clock);
                             // 秒级时间
                             dfTube.timeSecond = clockSdf.parse(dfTube.clock).getTime() / 1000;
                             Date testTime = clockSdf.parse(dfTube.clock);
@@ -189,25 +207,35 @@ public class JobMain {
                 });
 
 
-        SingleOutputStreamOperator<DFTube> tempDS = tube30sPeriodDS.returns(DFTube.class);
+        SingleOutputStreamOperator<DFTube> dfTube30PeriodStream = tube30sPeriodDS.returns(DFTube.class);
 
-        tempDS.map(new MapFunction<DFTube, Tuple2<String, Integer>>() {
-                    @Override
-                    public Tuple2<String, Integer> map(DFTube tube) throws Exception {
-                        return new Tuple2<>(tube.id + tube.dataVarAllRunCount, 1);
-                    }
-                })
-                .keyBy(0)
-                .timeWindow(Time.hours(1), Time.minutes(5))
-                .sum(1)
-                .print();
-
-        SingleOutputStreamOperator<DFTube> dfstream = tempDS
+        SingleOutputStreamOperator<DFTube> dfstream = dfTube30PeriodStream
                 .assignTimestampsAndWatermarks(watermarkGenerator)
-                .keyBy("id")
+                .keyBy("id", "dataVarAllRunCount")
                 .timeWindow(Time.hours(1), Time.minutes(5))
-                .minBy("dataVarAllRunCount");
-
+                .minBy("timeSecond")
+                .filter(new FilterFunction<DFTube>() {
+                    @Override
+                    public boolean filter(DFTube tube) throws Exception {
+                        String tubeID = tube.tubeID;
+                        if (!tubeRunCountTestTimeMap.containsKey(tubeID)) {
+                            Map<Integer, Long> enterBoatRunCountAndTestTimeMap = new ConcurrentHashMap<>(2);
+                            tubeRunCountTestTimeMap.put(tubeID, enterBoatRunCountAndTestTimeMap);
+                        }
+                        Map<Integer, Long> boatEnterTubeRunCountAndTestTimeMap = tubeRunCountTestTimeMap.get(tubeID);
+                        if (!boatEnterTubeRunCountAndTestTimeMap.containsKey(tube.dataVarAllRunCount)) {
+                            boatEnterTubeRunCountAndTestTimeMap.put(tube.dataVarAllRunCount, tube.timeSecond);
+                            return true;
+                        }
+                        Long latestTimeSecond = boatEnterTubeRunCountAndTestTimeMap.get(tube.dataVarAllRunCount);
+                        // 若上次存储的入管时间小于此次入管时间，则将此信息继续传递，准备写入到kafka中
+                        if (latestTimeSecond > tube.timeSecond) {
+                            boatEnterTubeRunCountAndTestTimeMap.put(tube.dataVarAllRunCount, tube.timeSecond);
+                            return true;
+                        }
+                        return false;
+                    }
+                });
         dfstream.print();
         //jsonStream.print()
         //dfStream.print()
