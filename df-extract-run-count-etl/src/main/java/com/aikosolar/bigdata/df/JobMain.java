@@ -37,12 +37,6 @@ public class JobMain {
 
     public static final String PROPERTIES_FILE_PATH = "application.properties";
 
-    public static final SimpleDateFormat CLOCK_SDF = new SimpleDateFormat("yyyyMMddHHmmssss");
-    public static final SimpleDateFormat DEFAULT_SIMPLE_SDF = new SimpleDateFormat("yyyyMMddHHmmss");
-    //分区字段
-    public static final SimpleDateFormat DEFAULT_SDF = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-    public static final SimpleDateFormat DS_SDF = new SimpleDateFormat("yyyyMMdd");
-
     public static void main(String[] args) throws Exception {
         ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         InputStream inputStream = classLoader
@@ -99,91 +93,96 @@ public class JobMain {
 
         SingleOutputStreamOperator<DFTube> tube30sPeriodDS = jsonStream.flatMap((FlatMapFunction<JSONObject, DFTube>)
                 (line, out) -> {
-            Map<String, Map<String, String>> tubePrefixMap = new HashMap<>(5);
-            Iterator iterator = line.keySet().iterator();
-            String key = null;
-            String value = null;
-            String prefix = null;
-            String columnSuffix = null;
-            Map<Integer, String> tube2BoatIDMap = new HashMap(12);
-            while (iterator.hasNext()) {
-                key = (String) iterator.next();
-                value = line.getString(key);
-                if (key.startsWith("Tube") && !"TubeID%String".equals(key)) {
-                    prefix = key.split("@")[0];
-                    if (!tubePrefixMap.containsKey(prefix)) {
-                        tubePrefixMap.put(prefix, new HashMap<>(10));
+                    final SimpleDateFormat clockSdf = new SimpleDateFormat("yyyyMMddHHmmssss");
+                    final SimpleDateFormat defaultSimpleSdf = new SimpleDateFormat("yyyyMMddHHmmss");
+                    //分区字段
+                    final SimpleDateFormat defaultSdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                    final SimpleDateFormat dsSdf = new SimpleDateFormat("yyyyMMdd");
+
+                    Map<String, Map<String, String>> tubePrefixMap = new HashMap<>(5);
+                    Iterator iterator = line.keySet().iterator();
+                    String key = null;
+                    String value = null;
+                    String prefix = null;
+                    String columnSuffix = null;
+                    Map<Integer, String> tube2BoatIDMap = new HashMap(12);
+                    while (iterator.hasNext()) {
+                        key = (String) iterator.next();
+                        value = line.getString(key);
+                        if (key.startsWith("Tube") && !"TubeID%String".equals(key)) {
+                            prefix = key.split("@")[0];
+                            if (!tubePrefixMap.containsKey(prefix)) {
+                                tubePrefixMap.put(prefix, new HashMap<>(10));
+                            }
+                            columnSuffix = key.substring(prefix.length(), key.length());
+                            tubePrefixMap.get(prefix).put(columnSuffix, value);
+                        }
+
+                        // 解析管号
+                        if (key.startsWith("Boat") && key.contains("@Tube%String") && value.contains("-")) {
+                            Integer tubeNo = Integer.valueOf(value.split("-")[1]);
+                            String boatPrefix = key.split("@")[0];
+                            String boatID = line.getString(boatPrefix + "@BoatID%String");
+                            tube2BoatIDMap.put(tubeNo, boatID);
+                        }
                     }
-                    columnSuffix = key.substring(prefix.length(), key.length());
-                    tubePrefixMap.get(prefix).put(columnSuffix, value);
-                }
 
-                // 解析管号
-                if (key.startsWith("Boat") && key.contains("@Tube%String") && value.contains("-")) {
-                    Integer tubeNo = Integer.valueOf(value.split("-")[1]);
-                    String boatPrefix = key.split("@")[0];
-                    String boatID = line.getString(boatPrefix + "@BoatID%String");
-                    tube2BoatIDMap.put(tubeNo, boatID);
-                }
-            }
+                    DFTube dfTube = null;
 
-            DFTube dfTube = null;
+                    Iterator tubePrefixIterator = tubePrefixMap.keySet().iterator();
+                    while (tubePrefixIterator.hasNext()) {
+                        String tubeKey = (String) tubePrefixIterator.next();
+                        Map<String, String> tubeValueMap = tubePrefixMap.get(tubeKey);
+                        dfTube = new DFTube();
+                        String eqpID = line.getString("MDLN%String");
+                        String site = null;
+                        if (StringUtils.isNotBlank(eqpID)) {
+                            if (eqpID.split("-").length == 2) {
+                                eqpID = "Z2-" + eqpID;
+                                site = "Z2";
+                            }
+                        } else {
+                            site = eqpID.split("-")[0];
+                        }
 
-            Iterator tubePrefixIterator = tubePrefixMap.keySet().iterator();
-            while (tubePrefixIterator.hasNext()) {
-                String tubeKey = (String) tubePrefixIterator.next();
-                Map<String, String> tubeValueMap = tubePrefixMap.get(tubeKey);
-                dfTube = new DFTube();
-                String eqpID = line.getString("MDLN%String");
-                String site = null;
-                if (StringUtils.isNotBlank(eqpID)) {
-                    if (eqpID.split("-").length == 2) {
-                        eqpID = "Z2-" + eqpID;
-                        site = "Z2";
+                        dfTube.eqpID = eqpID;
+                        dfTube.site = site;
+                        // 赋予默认值1970010101010100，避免无法进行窗口计算
+                        dfTube.clock = line.getOrDefault("Clock%String", "1970010101010100").toString();
+                        if (StringUtils.isNotBlank(dfTube.clock)) {
+                            if (StringUtils.containsIgnoreCase(dfTube.clock, "E") || StringUtils.containsIgnoreCase(dfTube.clock, ".")) {
+                                dfTube.clock = "1970010101010100";
+                            }
+                            if (!StringUtils.isNumeric(dfTube.clock)) {
+                                dfTube.clock = "1970010101010100";
+                            }
+                            System.out.println(dfTube.clock);
+                            // 秒级时间
+                            dfTube.timeSecond = clockSdf.parse(dfTube.clock).getTime() / 1000;
+                            Date testTime = clockSdf.parse(dfTube.clock);
+                            dfTube.testTime = defaultSdf.format(testTime);
+                            dfTube.ds = dsSdf.format(testTime);
+                        }
+                        dfTube.recipe = line.getOrDefault("Recipe%String", "").toString();
+
+                        String tubeIDStr = tubeKey.substring(4, 5);
+                        dfTube.tubeID = tubeIDStr;
+                        dfTube.id = String.format("%s-%s", eqpID, tubeIDStr);
+                        dfTube.text1 = tubeValueMap.getOrDefault("@Memory@All@Text1%String", "");
+                        dfTube.text2 = tubeValueMap.getOrDefault("@Memory@All@Text2%String", "");
+                        dfTube.text3 = tubeValueMap.getOrDefault("@Memory@All@Text3%String", "");
+                        dfTube.text4 = tubeValueMap.getOrDefault("@Memory@All@Text4%String", "");
+                        dfTube.boatID = tube2BoatIDMap.getOrDefault(Integer.valueOf(tubeIDStr), "");
+                        dfTube.gasPOClBubbLeve = Double.valueOf(MapUtil.getValueOrDefault(tubeValueMap, "@Gas@POClBubb@Level%Float", "-100"));
+                        dfTube.gasN2_POCl3VolumeAct = Double.valueOf(MapUtil.getValueOrDefault(tubeValueMap, "@Gas@N2_POCl3@VolumeAct%Double", "-100"));
+                        dfTube.gasPOClBubbTempAct = Double.valueOf(MapUtil.getValueOrDefault(tubeValueMap, "@Gas@POClBubb@TempAct%Float", "-100"));
+                        dfTube.dataVarAllRunCount = Double.valueOf(MapUtil.getValueOrDefault(tubeValueMap, "@DataVar@All@RunCount%Double", "-1")).intValue();
+                        dfTube.dataVarAllRunNoLef = Double.valueOf(MapUtil.getValueOrDefault(tubeValueMap, "@DataVar@All@RunNoLef%Double", "-1")).intValue();
+                        dfTube.vacuumDoorPressure = MapUtil.getValueOrDefault(tubeValueMap, "@Vacuum@Door@Pressure%Float", "-1");
+                        dfTube.dataVarAllRunTime = MapUtil.getValueOrDefault(tubeValueMap, "@DataVar@All@RunTime%Double", "-1");
+                        out.collect(dfTube);
                     }
-                } else {
-                    site = eqpID.split("-")[0];
-                }
-
-                dfTube.eqpID = eqpID;
-                dfTube.site = site;
-                // 赋予默认值1970010101010100，避免无法进行窗口计算
-                dfTube.clock = line.getOrDefault("Clock%String", "1970010101010100").toString();
-                if (StringUtils.isNotBlank(dfTube.clock)) {
-                    if (StringUtils.containsIgnoreCase(dfTube.clock, "E") || StringUtils.containsIgnoreCase(dfTube.clock, ".")) {
-                        dfTube.clock = "1970010101010100";
-                    }
-                    if (!StringUtils.isNumeric(dfTube.clock)) {
-                        dfTube.clock = "1970010101010100";
-                    }
-                    System.out.println(dfTube.clock);
-                    // 秒级时间
-                    dfTube.timeSecond = CLOCK_SDF.parse(dfTube.clock).getTime() / 1000;
-                    Date testTime = CLOCK_SDF.parse(dfTube.clock);
-                    dfTube.testTime = DEFAULT_SDF.format(testTime);
-                    dfTube.ds = DS_SDF.format(testTime);
-                }
-                dfTube.recipe = line.getOrDefault("Recipe%String", "").toString();
-
-                String tubeIDStr = tubeKey.substring(4, 5);
-                dfTube.tubeID = tubeIDStr;
-                dfTube.id = String.format("%s-%s", eqpID, tubeIDStr);
-                dfTube.text1 = tubeValueMap.getOrDefault("@Memory@All@Text1%String", "");
-                dfTube.text2 = tubeValueMap.getOrDefault("@Memory@All@Text2%String", "");
-                dfTube.text3 = tubeValueMap.getOrDefault("@Memory@All@Text3%String", "");
-                dfTube.text4 = tubeValueMap.getOrDefault("@Memory@All@Text4%String", "");
-                dfTube.boatID = tube2BoatIDMap.getOrDefault(Integer.valueOf(tubeIDStr), "");
-                dfTube.gasPOClBubbLeve = Double.valueOf(MapUtil.getValueOrDefault(tubeValueMap, "@Gas@POClBubb@Level%Float", "-100"));
-                dfTube.gasN2_POCl3VolumeAct = Double.valueOf(MapUtil.getValueOrDefault(tubeValueMap, "@Gas@N2_POCl3@VolumeAct%Double", "-100"));
-                dfTube.gasPOClBubbTempAct = Double.valueOf(MapUtil.getValueOrDefault(tubeValueMap, "@Gas@POClBubb@TempAct%Float", "-100"));
-                dfTube.dataVarAllRunCount = Double.valueOf(MapUtil.getValueOrDefault(tubeValueMap, "@DataVar@All@RunCount%Double", "-1")).intValue();
-                dfTube.dataVarAllRunNoLef = Double.valueOf(MapUtil.getValueOrDefault(tubeValueMap, "@DataVar@All@RunNoLef%Double", "-1")).intValue();
-                dfTube.vacuumDoorPressure = MapUtil.getValueOrDefault(tubeValueMap, "@Vacuum@Door@Pressure%Float", "-1");
-                dfTube.dataVarAllRunTime = MapUtil.getValueOrDefault(tubeValueMap, "@DataVar@All@RunTime%Double", "-1");
-                out.collect(dfTube);
-            }
-        });
-
+                });
 
 
         SingleOutputStreamOperator<DFTube> dfstream = tube30sPeriodDS
