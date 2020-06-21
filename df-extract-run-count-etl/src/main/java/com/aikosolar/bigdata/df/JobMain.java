@@ -189,8 +189,9 @@ public class JobMain {
                 });
 
 
-        tube30sPeriodDS.returns(DFTube.class)
-                .map(new MapFunction<DFTube, Tuple2<String, Integer>>() {
+        SingleOutputStreamOperator<DFTube> tempDS = tube30sPeriodDS.returns(DFTube.class);
+
+        tempDS.map(new MapFunction<DFTube, Tuple2<String, Integer>>() {
                     @Override
                     public Tuple2<String, Integer> map(DFTube tube) throws Exception {
                         return new Tuple2<>(tube.id + tube.dataVarAllRunCount, 1);
@@ -201,8 +202,7 @@ public class JobMain {
                 .sum(1)
                 .print();
 
-        SingleOutputStreamOperator<DFTube> dfstream = tube30sPeriodDS
-                .returns(DFTube.class)
+        SingleOutputStreamOperator<DFTube> dfstream = tempDS
                 .assignTimestampsAndWatermarks(watermarkGenerator)
                 .keyBy("id")
                 .timeWindow(Time.hours(1), Time.minutes(5))
