@@ -4,7 +4,9 @@ import com.aikosolar.bigdata.df.util.MapUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.api.java.typeutils.ListTypeInfo;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -93,7 +95,8 @@ public class JobMain {
 
         AssignerWithPeriodicWatermarks<DFTube> watermarkGenerator = new TimeLagWatermarkGenerator();
 
-        SingleOutputStreamOperator<DFTube> tube30sPeriodDS = jsonStream.flatMap((line, out) -> {
+        SingleOutputStreamOperator<DFTube> tube30sPeriodDS = jsonStream.flatMap((FlatMapFunction<JSONObject, DFTube>)
+                (line, out) -> {
             List<DFTube> list = new ArrayList<>(5);
             Map<String, Map<String, String>> tubePrefixMap = new HashMap<>(5);
             Iterator iterator = line.keySet().iterator();
