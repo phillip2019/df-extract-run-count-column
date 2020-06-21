@@ -150,15 +150,15 @@ public class JobMain {
                 // 赋予默认值1970010101010100，避免无法进行窗口计算
                 dfTube.clock = line.getOrDefault("Clock%String", "1970010101010100").toString();
                 if (StringUtils.isNotBlank(dfTube.clock)) {
-                    if (StringUtils.containsIgnoreCase(dfTube.clock, "E")) {
+                    if (StringUtils.containsIgnoreCase(dfTube.clock, "E") || StringUtils.containsIgnoreCase(dfTube.clock, ".")) {
                         dfTube.clock = "1970010101010100";
                     }
                     if (!StringUtils.isNumeric(dfTube.clock)) {
                         dfTube.clock = "1970010101010100";
                     }
+                    System.out.println(dfTube.clock);
                     // 秒级时间
                     dfTube.timeSecond = CLOCK_SDF.parse(dfTube.clock).getTime() / 1000;
-                    System.out.println(dfTube.clock);
                     Date testTime = CLOCK_SDF.parse(dfTube.clock);
                     dfTube.testTime = DEFAULT_SDF.format(testTime);
                     dfTube.ds = DS_SDF.format(testTime);
