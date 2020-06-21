@@ -10,7 +10,10 @@ import java.io.Serializable;
 /**
   * DF 管式设备原始数据样列类
   */
-class DFTube implements Serializable {
+class DFTube {
+
+  private static final long serialVersionUID = 1L;
+
   public String id = "";
   public String eqpID = "";
   public String site = "";
@@ -211,6 +214,9 @@ class DFTube implements Serializable {
 
   public void setFirstStatus(Integer firstStatus) {
     this.firstStatus = firstStatus;
+  }
+
+  public DFTube() {
   }
 
   @Override
