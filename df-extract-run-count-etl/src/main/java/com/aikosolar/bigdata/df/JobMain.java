@@ -147,10 +147,12 @@ public class JobMain {
 
                 dfTube.eqpID = eqpID;
                 dfTube.site = site;
-                dfTube.clock = line.getOrDefault("Clock%String", "").toString();
+                // 赋予默认值1970010101010100，避免无法进行窗口计算
+                dfTube.clock = line.getOrDefault("Clock%String", "1970010101010100").toString();
                 if (StringUtils.isNotBlank(dfTube.clock)) {
                     // 秒级时间
                     dfTube.timeSecond = CLOCK_SDF.parse(dfTube.clock).getTime() / 1000;
+                    System.out.println(dfTube.clock);
                     Date testTime = CLOCK_SDF.parse(dfTube.clock);
                     dfTube.testTime = DEFAULT_SDF.format(testTime);
                     dfTube.ds = DS_SDF.format(testTime);
@@ -181,7 +183,7 @@ public class JobMain {
         SingleOutputStreamOperator<DFTube> dfstream = tube30sPeriodDS
                 .returns(DFTube.class)
                 .assignTimestampsAndWatermarks(watermarkGenerator)
-                .keyBy(new Grouping())
+                .keyBy("id")
                 .timeWindow(Time.hours(1), Time.minutes(5))
                 .minBy("dataVarAllRunCount");
 
