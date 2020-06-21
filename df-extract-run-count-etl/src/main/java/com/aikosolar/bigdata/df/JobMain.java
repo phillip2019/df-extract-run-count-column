@@ -5,9 +5,13 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.operators.Grouping;
+import org.apache.flink.api.java.tuple.Tuple;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.typeutils.ListTypeInfo;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.streaming.api.TimeCharacteristic;
@@ -184,6 +188,18 @@ public class JobMain {
                     }
                 });
 
+
+        tube30sPeriodDS.returns(DFTube.class)
+                .map(new MapFunction<DFTube, Tuple2<String, Integer>>() {
+                    @Override
+                    public Tuple2<String, Integer> map(DFTube tube) throws Exception {
+                        return new Tuple2<>(tube.id + tube.dataVarAllRunCount, 1);
+                    }
+                })
+                .keyBy(0)
+                .timeWindow(Time.hours(1), Time.minutes(5))
+                .sum(2)
+                .print();
 
         SingleOutputStreamOperator<DFTube> dfstream = tube30sPeriodDS
                 .returns(DFTube.class)
