@@ -150,7 +150,7 @@ public class JobMain {
                 // 赋予默认值1970010101010100，避免无法进行窗口计算
                 dfTube.clock = line.getOrDefault("Clock%String", "1970010101010100").toString();
                 if (StringUtils.isNotBlank(dfTube.clock)) {
-                    if (StringUtils.containsIgnoreCase(dfTube.clock, ".2013E2013E22")) {
+                    if (StringUtils.containsIgnoreCase(dfTube.clock, "E")) {
                         dfTube.clock = "1970010101010100";
                     }
                     if (!StringUtils.isNumeric(dfTube.clock)) {
