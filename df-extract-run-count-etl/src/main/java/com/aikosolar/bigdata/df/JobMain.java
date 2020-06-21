@@ -4,7 +4,9 @@ import com.aikosolar.bigdata.df.util.MapUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.api.java.typeutils.ListTypeInfo;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -51,9 +53,9 @@ public class JobMain {
 
         // 1. 创建流式环境
         // 正式环境
-    final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+//    final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 //     本地调试模式，pom文件中scope需要改为compile
-//        final StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment();
+        final StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment();
 
         //2 .指定kafak相关信息
         final String bootstrapServers = parameterTool.get("bootstrap.servers");
@@ -93,7 +95,8 @@ public class JobMain {
 
         AssignerWithPeriodicWatermarks<DFTube> watermarkGenerator = new TimeLagWatermarkGenerator();
 
-        DataStream<DFTube> tube30sPeriodDS = jsonStream.flatMap((line, out) -> {
+        SingleOutputStreamOperator<DFTube> tube30sPeriodDS = jsonStream.flatMap((FlatMapFunction<JSONObject, DFTube>)
+                (line, out) -> {
             List<DFTube> list = new ArrayList<>(5);
             Map<String, Map<String, String>> tubePrefixMap = new HashMap<>(5);
             Iterator iterator = line.keySet().iterator();
@@ -167,7 +170,7 @@ public class JobMain {
                 dfTube.dataVarAllRunCount = Double.valueOf(MapUtil.getValueOrDefault(tubeValueMap, "@DataVar@All@RunCount%Double", "-1")).intValue();
                 dfTube.dataVarAllRunNoLef = Double.valueOf(MapUtil.getValueOrDefault(tubeValueMap, "@DataVar@All@RunNoLef%Double", "-1")).intValue();
                 dfTube.vacuumDoorPressure = MapUtil.getValueOrDefault(tubeValueMap, "@Vacuum@Door@Pressure%Float", "-1");
-                dfTube.dataVarAllRunTime = MapUtil.getValueOrDefault(tubeValueMap,"@DataVar@All@RunTime%Double", "-1");
+                dfTube.dataVarAllRunTime = MapUtil.getValueOrDefault(tubeValueMap, "@DataVar@All@RunTime%Double", "-1");
                 list.add(dfTube);
             }
             list.forEach(out::collect);
@@ -176,6 +179,7 @@ public class JobMain {
 
 
         SingleOutputStreamOperator<DFTube> dfstream = tube30sPeriodDS
+                .returns(DFTube.class)
                 .assignTimestampsAndWatermarks(watermarkGenerator)
                 .keyBy("id")
                 .timeWindow(Time.hours(1), Time.minutes(5))
