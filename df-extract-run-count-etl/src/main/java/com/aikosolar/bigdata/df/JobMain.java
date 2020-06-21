@@ -198,7 +198,7 @@ public class JobMain {
                 })
                 .keyBy(0)
                 .timeWindow(Time.hours(1), Time.minutes(5))
-                .sum(2)
+                .sum(1)
                 .print();
 
         SingleOutputStreamOperator<DFTube> dfstream = tube30sPeriodDS
