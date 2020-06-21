@@ -93,7 +93,7 @@ public class JobMain {
 
         AssignerWithPeriodicWatermarks<DFTube> watermarkGenerator = new TimeLagWatermarkGenerator();
 
-        DataStream<DFTube> tube30sPeriodDS = jsonStream.flatMap((line, out) -> {
+        SingleOutputStreamOperator<DFTube> tube30sPeriodDS = jsonStream.flatMap((line, out) -> {
             List<DFTube> list = new ArrayList<>(5);
             Map<String, Map<String, String>> tubePrefixMap = new HashMap<>(5);
             Iterator iterator = line.keySet().iterator();
@@ -167,15 +167,16 @@ public class JobMain {
                 dfTube.dataVarAllRunCount = Double.valueOf(MapUtil.getValueOrDefault(tubeValueMap, "@DataVar@All@RunCount%Double", "-1")).intValue();
                 dfTube.dataVarAllRunNoLef = Double.valueOf(MapUtil.getValueOrDefault(tubeValueMap, "@DataVar@All@RunNoLef%Double", "-1")).intValue();
                 dfTube.vacuumDoorPressure = MapUtil.getValueOrDefault(tubeValueMap, "@Vacuum@Door@Pressure%Float", "-1");
-                dfTube.dataVarAllRunTime = MapUtil.getValueOrDefault(tubeValueMap,"@DataVar@All@RunTime%Double", "-1");
+                dfTube.dataVarAllRunTime = MapUtil.getValueOrDefault(tubeValueMap, "@DataVar@All@RunTime%Double", "-1");
                 list.add(dfTube);
             }
             list.forEach(out::collect);
-        })
+        });
 
 
 
         SingleOutputStreamOperator<DFTube> dfstream = tube30sPeriodDS
+                .returns(DFTube.class)
                 .assignTimestampsAndWatermarks(watermarkGenerator)
                 .keyBy("id")
                 .timeWindow(Time.hours(1), Time.minutes(5))
