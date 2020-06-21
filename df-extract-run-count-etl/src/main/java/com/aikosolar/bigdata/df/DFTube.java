@@ -10,7 +10,7 @@ import java.io.Serializable;
 /**
   * DF 管式设备原始数据样列类
   */
-class DFTube {
+public class DFTube {
 
   private static final long serialVersionUID = 1L;
 
