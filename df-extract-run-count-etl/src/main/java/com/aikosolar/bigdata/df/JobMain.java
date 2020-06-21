@@ -153,6 +153,9 @@ public class JobMain {
                     if (StringUtils.containsIgnoreCase(dfTube.clock, ".2013E2013E22")) {
                         dfTube.clock = "1970010101010100";
                     }
+                    if (!StringUtils.isNumeric(dfTube.clock)) {
+                        dfTube.clock = "1970010101010100";
+                    }
                     // 秒级时间
                     dfTube.timeSecond = CLOCK_SDF.parse(dfTube.clock).getTime() / 1000;
                     System.out.println(dfTube.clock);
