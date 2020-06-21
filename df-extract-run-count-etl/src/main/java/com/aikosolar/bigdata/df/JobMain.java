@@ -6,6 +6,8 @@ import com.alibaba.fastjson.JSONObject;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.api.java.operators.Grouping;
 import org.apache.flink.api.java.typeutils.ListTypeInfo;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.streaming.api.TimeCharacteristic;
@@ -179,7 +181,7 @@ public class JobMain {
         SingleOutputStreamOperator<DFTube> dfstream = tube30sPeriodDS
                 .returns(DFTube.class)
                 .assignTimestampsAndWatermarks(watermarkGenerator)
-                .keyBy("id", "dataVarAllRunCount")
+                .keyBy(new Grouping())
                 .timeWindow(Time.hours(1), Time.minutes(5))
                 .minBy("dataVarAllRunCount");
 
@@ -192,4 +194,10 @@ public class JobMain {
         env.execute();
     }
 
+    public static class Grouping implements KeySelector<DFTube, Integer> {
+        @Override
+        public Integer getKey(DFTube tube) throws Exception {
+            return Integer.valueOf(String.format("%s-%d", tube.eqpID, tube.tubeID));
+        }
+    }
 }
