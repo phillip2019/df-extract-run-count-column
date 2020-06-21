@@ -171,7 +171,7 @@ public class JobMain {
                 list.add(dfTube);
             }
             list.forEach(out::collect);
-        }).returns(new ArrayList<DFTube>());
+        });
 
 
 
