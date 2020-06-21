@@ -13,7 +13,6 @@ import org.apache.flink.api.scala._
 import org.apache.flink.streaming.api.scala.{DataStream, StreamExecutionEnvironment}
 import org.apache.flink.streaming.api.windowing.time.Time
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer010
-import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos.TimeUnit
 
 object App {
   def main(args: Array[String]): Unit = {
@@ -140,12 +139,12 @@ object App {
     }).assignTimestampsAndWatermarks(new TimeLagWatermarkGenerator)
 
 
-    val dfstream = tube30sPeriodDS
-      .keyBy(_.id)
-      .timeWindow(Time.hours(1), Time.minutes(5))
-      .minBy("dataVarAllRunCount")
+    var dfstream = tube30sPeriodDS
+        .keyBy(_.id)
+        .timeWindow(Time.hours(1), Time.minutes(5))
+        .minBy("dataVarAllRunCount")
+        .print()
 
-    dfstream.print()
     //jsonStream.print()
     //dfStream.print()
     /* kafkaDataStream.setParallelism(1).writeAsText("./data/sink/test",FileSystem.WriteMode.OVERWRITE)*/

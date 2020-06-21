@@ -51,9 +51,9 @@ public class JobMain {
 
         // 1. 创建流式环境
         // 正式环境
-//    final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+    final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 //     本地调试模式，pom文件中scope需要改为compile
-        final StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment();
+//        final StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment();
 
         //2 .指定kafak相关信息
         final String bootstrapServers = parameterTool.get("bootstrap.servers");
@@ -171,7 +171,7 @@ public class JobMain {
                 list.add(dfTube);
             }
             list.forEach(out::collect);
-        })
+        }).returns(new ArrayList<DFTube>());
 
 
 

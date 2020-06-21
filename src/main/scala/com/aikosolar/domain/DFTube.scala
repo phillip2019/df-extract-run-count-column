@@ -7,7 +7,7 @@ package com.aikosolar.domain
 /**
   * DF 管式设备原始数据样列类
   */
-class DFTube {
+case class DFTube() {
   var id: String = ""
   var eqpID: String = ""
   var site: String = ""
