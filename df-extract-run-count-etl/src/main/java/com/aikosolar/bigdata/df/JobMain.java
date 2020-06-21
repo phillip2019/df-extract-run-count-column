@@ -25,6 +25,10 @@ import org.apache.flink.streaming.api.functions.TimestampAssigner;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer010;
+import org.apache.flink.streaming.connectors.kafka.FlinkKafkaProducer010;
+import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkKafkaPartitioner;
+import org.apache.flink.streaming.util.serialization.KeyedSerializationSchema;
+import org.apache.flink.streaming.util.serialization.KeyedSerializationSchemaWrapper;
 import org.apache.flink.util.Collector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -82,6 +86,8 @@ public class JobMain {
         final String etlSourceGroupID = parameterTool.get("etl.source.group.id");
         final String etlSourceCommitIntervalMS = parameterTool.get("etl.source.auto.commit.interval.ms");
         final String etlSourceOffsetReset = parameterTool.get("etl.source.auto.offset.reset");
+
+        final String etlTargetTopic = parameterTool.get("etl.target.topic");
 
         // 3. 创建Kafka数据流
         Properties kafkaConsumerProps = new Properties();
@@ -223,6 +229,7 @@ public class JobMain {
                             tubeRunCountTestTimeMap.put(tubeID, enterBoatRunCountAndTestTimeMap);
                         }
                         Map<Integer, Long> boatEnterTubeRunCountAndTestTimeMap = tubeRunCountTestTimeMap.get(tubeID);
+                        // TODO 清除无用的runCount信息
                         if (!boatEnterTubeRunCountAndTestTimeMap.containsKey(tube.dataVarAllRunCount)) {
                             boatEnterTubeRunCountAndTestTimeMap.put(tube.dataVarAllRunCount, tube.timeSecond);
                             return true;
@@ -236,13 +243,27 @@ public class JobMain {
                         return false;
                     }
                 });
+
+        // TODO 写入到kafka中，供下一步流程处理，获取最后管道状态变更信息
         dfstream.print();
+
+        final Properties kafkaProducerProps = new Properties();
+        kafkaProducerProps.put("bootstrap.servers", bootstrapServers);
+
+        dfstream.addSink(new FlinkKafkaProducer010<DFTube>(
+                etlTargetTopic,
+                new DFTubeSchema(),
+                kafkaProducerProps,
+                new DFTubePartitioner()
+        ));
         //jsonStream.print()
         //dfStream.print()
         /* kafkaDataStream.setParallelism(1).writeAsText("./data/sink/test",FileSystem.WriteMode.OVERWRITE)*/
 
+        logger.info("job start...");
+
         // 6.执行任务
-        env.execute();
+        env.execute(parameterTool.get("job.name"));
     }
 
     public static class Grouping implements KeySelector<DFTube, Integer> {
