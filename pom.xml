@@ -52,6 +52,7 @@
             <artifactId>hbase-server</artifactId>
             <version>${hbase.version}</version>
         </dependency>
+
         <!--hbase依赖于hadoop-->
         <dependency>
             <groupId>org.apache.hadoop</groupId>

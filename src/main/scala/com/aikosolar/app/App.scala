@@ -140,13 +140,12 @@ object App {
     }).assignTimestampsAndWatermarks(new TimeLagWatermarkGenerator)
 
 
-    var dfstream = tube30sPeriodDS
-        .keyBy(_.id)
-        .timeWindow(Time.hours(1), Time.minutes(5))
-        .minBy("dataVarAllRunCount")
-        .print()
+    val dfstream = tube30sPeriodDS
+      .keyBy(_.id)
+      .timeWindow(Time.hours(1), Time.minutes(5))
+      .minBy("dataVarAllRunCount")
 
-    //dfstream.print()
+    dfstream.print()
     //jsonStream.print()
     //dfStream.print()
     /* kafkaDataStream.setParallelism(1).writeAsText("./data/sink/test",FileSystem.WriteMode.OVERWRITE)*/
