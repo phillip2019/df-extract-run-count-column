@@ -97,7 +97,6 @@ public class JobMain {
 
         SingleOutputStreamOperator<DFTube> tube30sPeriodDS = jsonStream.flatMap((FlatMapFunction<JSONObject, DFTube>)
                 (line, out) -> {
-            List<DFTube> list = new ArrayList<>(5);
             Map<String, Map<String, String>> tubePrefixMap = new HashMap<>(5);
             Iterator iterator = line.keySet().iterator();
             String key = null;
@@ -171,9 +170,8 @@ public class JobMain {
                 dfTube.dataVarAllRunNoLef = Double.valueOf(MapUtil.getValueOrDefault(tubeValueMap, "@DataVar@All@RunNoLef%Double", "-1")).intValue();
                 dfTube.vacuumDoorPressure = MapUtil.getValueOrDefault(tubeValueMap, "@Vacuum@Door@Pressure%Float", "-1");
                 dfTube.dataVarAllRunTime = MapUtil.getValueOrDefault(tubeValueMap, "@DataVar@All@RunTime%Double", "-1");
-                list.add(dfTube);
+                out.collect(dfTube);
             }
-            list.forEach(out::collect);
         });
 
 
