@@ -304,7 +304,7 @@ public class JobMain {
                         values.forEach(out::collect);
                     }
                 });
-        reOrderDataStream.print();
+//        reOrderDataStream.print();
 
         // 求CT
         SingleOutputStreamOperator<DFTube> boatEnterTubeCTDataStream =
@@ -348,7 +348,7 @@ public class JobMain {
                         }).filter((FilterFunction<DFTube>) value -> !value.ct.equals(-100L));
 
         // TODO 写入到kafka中，供下一步流程处理，获取最后管道状态变更信息
-//        boatEnterTubeCTDataStream.print();
+        boatEnterTubeCTDataStream.print();
 
         final Properties kafkaProducerProps = new Properties();
         kafkaProducerProps.put("bootstrap.servers", bootstrapServers);
