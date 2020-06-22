@@ -291,9 +291,9 @@ public class JobMain {
                 })
                 .filter((FilterFunction<DFTube>) value -> value.firstStatus.equals(1) && StringUtils.isNotBlank(value.id));
 
-//        boatEnterTubeDataStream.print();
+        boatEnterTubeDataStream.print();
 
-        // 重新划分窗口，方便后续去重
+       /* // 重新划分窗口，方便后续去重
         SingleOutputStreamOperator<DFTube> reOrderDataStream = boatEnterTubeDataStream
                 .keyBy(DFTube::getId)
                 .windowAll(GlobalWindows.create())
@@ -303,12 +303,12 @@ public class JobMain {
                     public void apply(GlobalWindow window, Iterable<DFTube> values, Collector<DFTube> out) throws Exception {
                         values.forEach(out::collect);
                     }
-                });
+                });*/
 //        reOrderDataStream.print();
 
         // 求CT
         SingleOutputStreamOperator<DFTube> boatEnterTubeCTDataStream =
-                reOrderDataStream
+                boatEnterTubeDataStream
                         .keyBy("id")
                         .countWindow(2, 1)
                         .reduce(new ReduceFunction<DFTube>() {
