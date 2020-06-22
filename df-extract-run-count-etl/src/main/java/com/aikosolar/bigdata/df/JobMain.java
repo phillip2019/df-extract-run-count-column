@@ -315,6 +315,14 @@ public class JobMain {
                             @Override
                             public DFTube reduce(DFTube v1, DFTube v2) throws Exception {
                                 DFTube r = new DFTube();
+                                if (!v1.id.equals(v2.id)) {
+                                    System.out.println("同一个窗口两次key不一致key1: " + v1.id + ',' + "key2:" + v2.id);
+                                } else {
+                                    System.out.println("输出的元素为: ");
+                                    System.out.println(v1);
+                                    System.out.println(v2);
+                                    System.out.println("--------------------------------------------------");
+                                }
                                 if (Math.abs(v1.dataVarAllRunCount - v2.dataVarAllRunCount) == 1) {
                                     String testTime = v1.testTime;
                                     String runTime = v2.dataVarAllRunTime;
@@ -330,11 +338,11 @@ public class JobMain {
                                     r.endTime = defaultSdf.format(new Date(defaultSdf.parse(testTime).getTime() + runTimeSecond));
                                     r.ct = runTimeSecond;
                                 } else if (v1.dataVarAllRunCount < v2.dataVarAllRunCount) {
-                                    copier.copy(v2, r, null);
+                                    copier.copy(v1, r, null);
                                     r.ct = -1L;
                                     r.endTime = "1970-01-01 01:01:00";
                                 } else if (v1.dataVarAllRunCount > v2.dataVarAllRunCount) {
-                                    copier.copy(v1, r, null);
+                                    copier.copy(v2, r, null);
                                     r.ct = -1L;
                                     r.endTime = "1970-01-01 01:01:00";
                                 } else {
@@ -342,6 +350,8 @@ public class JobMain {
                                     copier.copy(v1, r, null);
                                     r.ct = -100L;
                                     r.endTime = "1970-01-01 01:01:00";
+                                    System.out.println(r);
+                                    System.out.println("############################################################");
                                 }
                                 return r;
                             }

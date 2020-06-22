@@ -118,7 +118,7 @@ public class KafkaConsumerDemo {
     public static Consumer<String, String> createConsumer() {
         Properties props = new Properties();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, globalProperties.getProperty("bootstrap.servers"));
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, "look_sxw_dev3");
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, "look_sxw_dev5");
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 1000);
