@@ -35,6 +35,8 @@ public class DFTube {
   public Long timeSecond = -1L;
   public String ds = "";
   public String testTime = "";
+  public String endTime = "1970-01-01 01:01:00";
+  public Long ct = -1L;
   /**
    * 是否是第一个状态位，默认非第一个状态位
    **/
@@ -216,6 +218,22 @@ public class DFTube {
     this.firstStatus = firstStatus;
   }
 
+  public String getEndTime() {
+    return endTime;
+  }
+
+  public void setEndTime(String endTime) {
+    this.endTime = endTime;
+  }
+
+  public Long getCt() {
+    return ct;
+  }
+
+  public void setCt(Long ct) {
+    this.ct = ct;
+  }
+
   public DFTube() {
   }
 
@@ -243,6 +261,8 @@ public class DFTube {
     sb.append(", timeSecond=").append(timeSecond);
     sb.append(", ds='").append(ds).append('\'');
     sb.append(", testTime='").append(testTime).append('\'');
+    sb.append(", endTime='").append(endTime).append('\'');
+    sb.append(", ct=").append(ct);
     sb.append(", firstStatus=").append(firstStatus);
     sb.append('}');
     return sb.toString();

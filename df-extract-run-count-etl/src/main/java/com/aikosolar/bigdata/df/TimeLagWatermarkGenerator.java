@@ -13,9 +13,9 @@ public class TimeLagWatermarkGenerator implements AssignerWithPeriodicWatermarks
 
     /**
      * 所有管式设备没有超过1小时的
-     * 水位设置成1h，之前的数据抛弃
+     * 水位设置成3s, 3s之后开始计算窗口计算，之前的抛弃
      **/
-    public static final Long MAX_TIME_LAG = 3600000L;
+    public static final Long MAX_TIME_LAG = 3000L;
 
     @Nullable
     @Override

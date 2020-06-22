@@ -3,12 +3,12 @@ package com.aikosolar.bigdata.df;
 import com.aikosolar.bigdata.df.util.MapUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
+import org.apache.commons.beanutils.BeanUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.flink.api.common.functions.FilterFunction;
-import org.apache.flink.api.common.functions.FlatMapFunction;
-import org.apache.flink.api.common.functions.MapFunction;
-import org.apache.flink.api.common.functions.ReduceFunction;
+import org.apache.flink.api.common.ExecutionConfig;
+import org.apache.flink.api.common.functions.*;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.operators.Grouping;
 import org.apache.flink.api.java.tuple.Tuple;
@@ -17,13 +17,22 @@ import org.apache.flink.api.java.typeutils.ListTypeInfo;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.KeyedStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.streaming.api.functions.TimestampAssigner;
+import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
+import org.apache.flink.streaming.api.functions.windowing.WindowFunction;
 import org.apache.flink.streaming.api.watermark.Watermark;
+import org.apache.flink.streaming.api.windowing.assigners.GlobalWindows;
+import org.apache.flink.streaming.api.windowing.assigners.WindowAssigner;
 import org.apache.flink.streaming.api.windowing.time.Time;
+import org.apache.flink.streaming.api.windowing.triggers.Trigger;
+import org.apache.flink.streaming.api.windowing.windows.GlobalWindow;
+import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
+import org.apache.flink.streaming.api.windowing.windows.Window;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer010;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaProducer010;
 import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkKafkaPartitioner;
@@ -35,6 +44,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 import javax.sql.DataSource;
+import javax.xml.crypto.Data;
 import java.io.IOException;
 import java.io.InputStream;
 import java.text.SimpleDateFormat;
@@ -118,8 +128,6 @@ public class JobMain {
 
         DataStream<JSONObject> jsonStream = mapStream.map(JSON::parseObject);
 
-        AssignerWithPeriodicWatermarks<DFTube> watermarkGenerator = new TimeLagWatermarkGenerator();
-
         SingleOutputStreamOperator<DFTube> tube30sPeriodDS = jsonStream.flatMap((FlatMapFunction<JSONObject, DFTube>)
                 (line, out) -> {
                     final SimpleDateFormat clockSdf = new SimpleDateFormat("yyyyMMddHHmmssss");
@@ -157,6 +165,11 @@ public class JobMain {
                     }
 
                     DFTube dfTube = null;
+                    // 过滤非DF数据,不进行后续操作
+                    if (!StringUtils.startsWith(line.getString("MDLN%String"), "DF")) {
+                        logger.info("存在非DF数据，具体为{}", line.getString("MDLN%String"));
+                        return;
+                    }
 
                     Iterator tubePrefixIterator = tubePrefixMap.keySet().iterator();
                     while (tubePrefixIterator.hasNext()) {
@@ -215,42 +228,126 @@ public class JobMain {
 
         SingleOutputStreamOperator<DFTube> dfTube30PeriodStream = tube30sPeriodDS.returns(DFTube.class);
 
-        SingleOutputStreamOperator<DFTube> dfstream = dfTube30PeriodStream
+//        dfTube30PeriodStream
+//                .assignTimestampsAndWatermarks(watermarkGenerator)
+//                .keyBy("id")
+//                .keyBy( "dataVarAllRunCount")
+
+        AssignerWithPeriodicWatermarks<DFTube> watermarkGenerator = new TimeLagWatermarkGenerator();
+
+        // 时间窗口计算方法
+//        SingleOutputStreamOperator<DFTube> dfstream = dfTube30PeriodStream
+//                .assignTimestampsAndWatermarks(watermarkGenerator)
+//                .keyBy("id")
+//                .keyBy("dataVarAllRunCount")
+//                .timeWindow(Time.hours(1), Time.minutes(5))
+//                .minBy("timeSecond")
+//                .filter(new FilterFunction<DFTube>() {
+//                    @Override
+//                    public boolean filter(DFTube tube) throws Exception {
+//                        String tubeID = tube.tubeID;
+//                        if (!tubeRunCountTestTimeMap.containsKey(tubeID)) {
+//                            Map<Integer, Long> enterBoatRunCountAndTestTimeMap = new ConcurrentHashMap<>(2);
+//                            tubeRunCountTestTimeMap.put(tubeID, enterBoatRunCountAndTestTimeMap);
+//                        }
+//                        Map<Integer, Long> boatEnterTubeRunCountAndTestTimeMap = tubeRunCountTestTimeMap.get(tubeID);
+//                        // TODO 清除无用的runCount信息
+//                        if (!boatEnterTubeRunCountAndTestTimeMap.containsKey(tube.dataVarAllRunCount)) {
+//                            boatEnterTubeRunCountAndTestTimeMap.put(tube.dataVarAllRunCount, tube.timeSecond);
+//                            return true;
+//                        }
+//                        Long latestTimeSecond = boatEnterTubeRunCountAndTestTimeMap.get(tube.dataVarAllRunCount);
+//                        // 若上次存储的入管时间小于此次入管时间，则将此信息继续传递，准备写入到kafka中
+//                        if (latestTimeSecond > tube.timeSecond) {
+//                            boatEnterTubeRunCountAndTestTimeMap.put(tube.dataVarAllRunCount, tube.timeSecond);
+//                            return true;
+//                        }
+//                        return false;
+//                    }
+//                });
+
+        // 计数窗口计数方案
+        SingleOutputStreamOperator<DFTube> boatEnterTubeDataStream = dfTube30PeriodStream
                 .assignTimestampsAndWatermarks(watermarkGenerator)
-                .keyBy("id", "dataVarAllRunCount")
-                .timeWindow(Time.hours(1), Time.minutes(5))
-                .minBy("timeSecond")
-                .filter(new FilterFunction<DFTube>() {
-                    @Override
-                    public boolean filter(DFTube tube) throws Exception {
-                        String tubeID = tube.tubeID;
-                        if (!tubeRunCountTestTimeMap.containsKey(tubeID)) {
-                            Map<Integer, Long> enterBoatRunCountAndTestTimeMap = new ConcurrentHashMap<>(2);
-                            tubeRunCountTestTimeMap.put(tubeID, enterBoatRunCountAndTestTimeMap);
-                        }
-                        Map<Integer, Long> boatEnterTubeRunCountAndTestTimeMap = tubeRunCountTestTimeMap.get(tubeID);
-                        // TODO 清除无用的runCount信息
-                        if (!boatEnterTubeRunCountAndTestTimeMap.containsKey(tube.dataVarAllRunCount)) {
-                            boatEnterTubeRunCountAndTestTimeMap.put(tube.dataVarAllRunCount, tube.timeSecond);
-                            return true;
-                        }
-                        Long latestTimeSecond = boatEnterTubeRunCountAndTestTimeMap.get(tube.dataVarAllRunCount);
-                        // 若上次存储的入管时间小于此次入管时间，则将此信息继续传递，准备写入到kafka中
-                        if (latestTimeSecond > tube.timeSecond) {
-                            boatEnterTubeRunCountAndTestTimeMap.put(tube.dataVarAllRunCount, tube.timeSecond);
-                            return true;
-                        }
-                        return false;
+                .keyBy("id")
+                .countWindow(2, 1)
+                .reduce((ReduceFunction<DFTube>) (v1, v2) -> {
+                    DFTube r = new DFTube();
+                    if (v2.dataVarAllRunCount > v1.dataVarAllRunCount) {
+                        BeanUtils.copyProperties(r, v2);
+                        r.firstStatus = 1;
+                    } else if (v2.dataVarAllRunCount < v1.dataVarAllRunCount) {
+                        BeanUtils.copyProperties(r, v1);
+                        r.firstStatus = 1;
+                    } else {
+                        r.firstStatus = -100;
                     }
-                });
+                    return r;
+                })
+                .filter((FilterFunction<DFTube>) value -> value.firstStatus.equals(1) && StringUtils.isNotBlank(value.id));
+
+//        boatEnterTubeDataStream.print();
+
+        // 求CT
+        SingleOutputStreamOperator<DFTube> boatEnterTubeCTDataStream =
+                boatEnterTubeDataStream
+                        .filter((FilterFunction<DFTube>) value -> value.firstStatus.equals(1) && StringUtils.isNotBlank(value.id))
+                        .keyBy(DFTube::getId)
+                        .window(GlobalWindows.create())
+                        .apply(new WindowFunction<DFTube, DFTube, String, GlobalWindow>() {
+                            @Override
+                            public void apply(String s, GlobalWindow window, Iterable<DFTube> input, Collector<DFTube> out) throws Exception {
+                                input.forEach(e -> {
+                                    out.collect(e);
+                                    System.out.println(e);
+                                });
+                            }
+                        }).keyBy("id")
+                        .countWindow(2, 1)
+                        .reduce(new ReduceFunction<DFTube>() {
+                            @Override
+                            public DFTube reduce(DFTube v1, DFTube v2) throws Exception {
+                                DFTube r = new DFTube();
+                                if (Math.abs(v1.dataVarAllRunCount - v2.dataVarAllRunCount) == 1) {
+                                    String testTime = v1.testTime;
+                                    String runTime = v2.dataVarAllRunTime;
+                                    BeanUtils.copyProperties(r, v1);
+                                    if (v1.dataVarAllRunCount > v2.dataVarAllRunCount) {
+                                        BeanUtils.copyProperties(r, v2);
+                                        testTime = v2.testTime;
+                                        runTime = v1.dataVarAllRunTime;
+                                    }
+                                    //分区字段
+                                    final SimpleDateFormat defaultSdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                                    final Long runTimeSecond = Double.valueOf(runTime).longValue();
+                                    r.endTime = defaultSdf.format(new Date(defaultSdf.parse(testTime).getTime() + runTimeSecond));
+                                    r.ct = runTimeSecond;
+                                } else if (v1.dataVarAllRunCount < v2.dataVarAllRunCount) {
+                                    BeanUtils.copyProperties(r, v1);
+                                    r.ct = -1L;
+                                    r.endTime = "1970-01-01 01:01:00";
+                                } else if (v1.dataVarAllRunCount > v2.dataVarAllRunCount) {
+                                    BeanUtils.copyProperties(r, v1);
+                                    r.ct = -1L;
+                                    r.endTime = "1970-01-01 01:01:00";
+                                } else {
+                                    // 重复数据，打标后续过滤
+                                    BeanUtils.copyProperties(r, v1);
+                                    r.ct = -100L;
+                                    r.endTime = "1970-01-01 01:01:00";
+                                }
+                                return r;
+                            }
+                        })
+                        .filter((FilterFunction<DFTube>) value -> !value.ct.equals(-100L));
 
         // TODO 写入到kafka中，供下一步流程处理，获取最后管道状态变更信息
-        dfstream.print();
+//        boatEnterTubeCTDataStream.print();
 
         final Properties kafkaProducerProps = new Properties();
         kafkaProducerProps.put("bootstrap.servers", bootstrapServers);
 
-        dfstream.addSink(new FlinkKafkaProducer010<DFTube>(
+        boatEnterTubeCTDataStream.addSink(new FlinkKafkaProducer010<DFTube>(
                 etlTargetTopic,
                 new DFTubeSchema(),
                 kafkaProducerProps,
