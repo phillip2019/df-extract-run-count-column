@@ -291,18 +291,18 @@ public class JobMain {
         // 求CT
         SingleOutputStreamOperator<DFTube> boatEnterTubeCTDataStream =
                 boatEnterTubeDataStream
-                        .filter((FilterFunction<DFTube>) value -> value.firstStatus.equals(1) && StringUtils.isNotBlank(value.id))
                         .keyBy(DFTube::getId)
-                        .window(GlobalWindows.create())
-                        .apply(new WindowFunction<DFTube, DFTube, String, GlobalWindow>() {
-                            @Override
-                            public void apply(String s, GlobalWindow window, Iterable<DFTube> input, Collector<DFTube> out) throws Exception {
-                                input.forEach(e -> {
-                                    out.collect(e);
-                                    System.out.println(e);
-                                });
-                            }
-                        }).keyBy("id")
+//                        .window(GlobalWindows.create())
+//                        .process(new ProcessWindowFunction<DFTube, DFTube, String, GlobalWindow>() {
+//                            @Override
+//                            public void process(String s, Context context, Iterable<DFTube> elements, Collector<DFTube> out) throws Exception {
+//                                elements.forEach(e -> {
+//                                    out.collect(e);
+//                                    System.out.println(e);
+//                                });
+//                            }
+//                        })
+//                        .keyBy("id")
                         .countWindow(2, 1)
                         .reduce(new ReduceFunction<DFTube>() {
                             @Override
@@ -342,7 +342,7 @@ public class JobMain {
                         .filter((FilterFunction<DFTube>) value -> !value.ct.equals(-100L));
 
         // TODO 写入到kafka中，供下一步流程处理，获取最后管道状态变更信息
-//        boatEnterTubeCTDataStream.print();
+        boatEnterTubeCTDataStream.print();
 
         final Properties kafkaProducerProps = new Properties();
         kafkaProducerProps.put("bootstrap.servers", bootstrapServers);
