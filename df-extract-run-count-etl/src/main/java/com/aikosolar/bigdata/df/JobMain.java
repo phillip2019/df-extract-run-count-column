@@ -3,6 +3,7 @@ package com.aikosolar.bigdata.df;
 import com.aikosolar.bigdata.df.util.MapUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
+import net.sf.cglib.beans.BeanCopier;
 import org.apache.commons.beanutils.BeanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.flink.api.common.ExecutionConfig;
@@ -23,12 +24,14 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.streaming.api.functions.TimestampAssigner;
+import org.apache.flink.streaming.api.functions.windowing.AllWindowFunction;
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
 import org.apache.flink.streaming.api.functions.windowing.WindowFunction;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.api.windowing.assigners.GlobalWindows;
 import org.apache.flink.streaming.api.windowing.assigners.WindowAssigner;
 import org.apache.flink.streaming.api.windowing.time.Time;
+import org.apache.flink.streaming.api.windowing.triggers.CountTrigger;
 import org.apache.flink.streaming.api.windowing.triggers.Trigger;
 import org.apache.flink.streaming.api.windowing.windows.GlobalWindow;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
@@ -61,6 +64,8 @@ public class JobMain {
     public static final String PROPERTIES_FILE_PATH = "application.properties";
 
     public static ParameterTool parameterTool = null;
+
+    private static BeanCopier copier = BeanCopier.create(DFTube.class, DFTube.class, false);
 
     static {
         ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
@@ -274,10 +279,10 @@ public class JobMain {
                 .reduce((ReduceFunction<DFTube>) (v1, v2) -> {
                     DFTube r = new DFTube();
                     if (v2.dataVarAllRunCount > v1.dataVarAllRunCount) {
-                        BeanUtils.copyProperties(r, v2);
+                        copier.copy(v2, r, null);
                         r.firstStatus = 1;
                     } else if (v2.dataVarAllRunCount < v1.dataVarAllRunCount) {
-                        BeanUtils.copyProperties(r, v1);
+                        copier.copy(v1, r, null);
                         r.firstStatus = 1;
                     } else {
                         r.firstStatus = -100;
@@ -288,21 +293,23 @@ public class JobMain {
 
 //        boatEnterTubeDataStream.print();
 
+        // 重新划分窗口，方便后续去重
+        SingleOutputStreamOperator<DFTube> reOrderDataStream = boatEnterTubeDataStream
+                .keyBy(DFTube::getId)
+                .windowAll(GlobalWindows.create())
+                .trigger(CountTrigger.of(2))
+                .apply(new AllWindowFunction<DFTube, DFTube, GlobalWindow>() {
+                    @Override
+                    public void apply(GlobalWindow window, Iterable<DFTube> values, Collector<DFTube> out) throws Exception {
+                        values.forEach(out::collect);
+                    }
+                });
+        reOrderDataStream.print();
+
         // 求CT
         SingleOutputStreamOperator<DFTube> boatEnterTubeCTDataStream =
-                boatEnterTubeDataStream
-                        .keyBy(DFTube::getId)
-//                        .window(GlobalWindows.create())
-//                        .process(new ProcessWindowFunction<DFTube, DFTube, String, GlobalWindow>() {
-//                            @Override
-//                            public void process(String s, Context context, Iterable<DFTube> elements, Collector<DFTube> out) throws Exception {
-//                                elements.forEach(e -> {
-//                                    out.collect(e);
-//                                    System.out.println(e);
-//                                });
-//                            }
-//                        })
-//                        .keyBy("id")
+                reOrderDataStream
+                        .keyBy("id")
                         .countWindow(2, 1)
                         .reduce(new ReduceFunction<DFTube>() {
                             @Override
@@ -311,9 +318,9 @@ public class JobMain {
                                 if (Math.abs(v1.dataVarAllRunCount - v2.dataVarAllRunCount) == 1) {
                                     String testTime = v1.testTime;
                                     String runTime = v2.dataVarAllRunTime;
-                                    BeanUtils.copyProperties(r, v1);
+                                    copier.copy(v1, r, null);
                                     if (v1.dataVarAllRunCount > v2.dataVarAllRunCount) {
-                                        BeanUtils.copyProperties(r, v2);
+                                        copier.copy(v2, r, null);
                                         testTime = v2.testTime;
                                         runTime = v1.dataVarAllRunTime;
                                     }
@@ -323,36 +330,34 @@ public class JobMain {
                                     r.endTime = defaultSdf.format(new Date(defaultSdf.parse(testTime).getTime() + runTimeSecond));
                                     r.ct = runTimeSecond;
                                 } else if (v1.dataVarAllRunCount < v2.dataVarAllRunCount) {
-                                    BeanUtils.copyProperties(r, v1);
+                                    copier.copy(v2, r, null);
                                     r.ct = -1L;
                                     r.endTime = "1970-01-01 01:01:00";
                                 } else if (v1.dataVarAllRunCount > v2.dataVarAllRunCount) {
-                                    BeanUtils.copyProperties(r, v1);
+                                    copier.copy(v1, r, null);
                                     r.ct = -1L;
                                     r.endTime = "1970-01-01 01:01:00";
                                 } else {
                                     // 重复数据，打标后续过滤
-                                    BeanUtils.copyProperties(r, v1);
+                                    copier.copy(v1, r, null);
                                     r.ct = -100L;
                                     r.endTime = "1970-01-01 01:01:00";
                                 }
                                 return r;
                             }
-                        })
-                        .filter((FilterFunction<DFTube>) value -> !value.ct.equals(-100L));
+                        }).filter((FilterFunction<DFTube>) value -> !value.ct.equals(-100L));
 
         // TODO 写入到kafka中，供下一步流程处理，获取最后管道状态变更信息
-        boatEnterTubeCTDataStream.print();
+//        boatEnterTubeCTDataStream.print();
 
         final Properties kafkaProducerProps = new Properties();
         kafkaProducerProps.put("bootstrap.servers", bootstrapServers);
 
-        boatEnterTubeCTDataStream.addSink(new FlinkKafkaProducer010<DFTube>(
+        boatEnterTubeCTDataStream.addSink(new FlinkKafkaProducer010<>(
                 etlTargetTopic,
                 new DFTubeSchema(),
                 kafkaProducerProps,
-                new DFTubePartitioner()
-        ));
+                new DFTubePartitioner()));
         //jsonStream.print()
         //dfStream.print()
         /* kafkaDataStream.setParallelism(1).writeAsText("./data/sink/test",FileSystem.WriteMode.OVERWRITE)*/
