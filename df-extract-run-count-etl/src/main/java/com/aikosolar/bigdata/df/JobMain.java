@@ -1,10 +1,12 @@
 package com.aikosolar.bigdata.df;
 
+import com.aikosolar.bigdata.df.client.HbaseClient;
 import com.aikosolar.bigdata.df.util.MapUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import net.sf.cglib.beans.BeanCopier;
 import org.apache.commons.beanutils.BeanUtils;
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.functions.*;
@@ -65,8 +67,6 @@ public class JobMain {
 
     public static ParameterTool parameterTool = null;
 
-    private static BeanCopier copier = BeanCopier.create(DFTube.class, DFTube.class, false);
-
     static {
         ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         InputStream inputStream = classLoader
@@ -94,6 +94,9 @@ public class JobMain {
 //    final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 //     本地调试模式，pom文件中scope需要改为compile
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment();
+
+        // 默认采用TimeCharacteristic.ProcessingTime策略
+        env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
 
         //2 .指定kafak相关信息
         final String bootstrapServers = parameterTool.get("bootstrap.servers");
@@ -277,6 +280,7 @@ public class JobMain {
                 .keyBy("id")
                 .countWindow(2, 1)
                 .reduce((ReduceFunction<DFTube>) (v1, v2) -> {
+                    final BeanCopier copier = BeanCopier.create(DFTube.class, DFTube.class, false);
                     DFTube r = new DFTube();
                     if (v2.dataVarAllRunCount > v1.dataVarAllRunCount) {
                         copier.copy(v2, r, null);
@@ -291,20 +295,7 @@ public class JobMain {
                 })
                 .filter((FilterFunction<DFTube>) value -> value.firstStatus.equals(1) && StringUtils.isNotBlank(value.id));
 
-        boatEnterTubeDataStream.print();
-
-       /* // 重新划分窗口，方便后续去重
-        SingleOutputStreamOperator<DFTube> reOrderDataStream = boatEnterTubeDataStream
-                .keyBy(DFTube::getId)
-                .windowAll(GlobalWindows.create())
-                .trigger(CountTrigger.of(2))
-                .apply(new AllWindowFunction<DFTube, DFTube, GlobalWindow>() {
-                    @Override
-                    public void apply(GlobalWindow window, Iterable<DFTube> values, Collector<DFTube> out) throws Exception {
-                        values.forEach(out::collect);
-                    }
-                });*/
-//        reOrderDataStream.print();
+//        boatEnterTubeDataStream.print();
 
         // 求CT
         SingleOutputStreamOperator<DFTube> boatEnterTubeCTDataStream =
@@ -314,6 +305,7 @@ public class JobMain {
                         .reduce(new ReduceFunction<DFTube>() {
                             @Override
                             public DFTube reduce(DFTube v1, DFTube v2) throws Exception {
+                                final BeanCopier copier = BeanCopier.create(DFTube.class, DFTube.class, false);
                                 DFTube r = new DFTube();
                                 if (!v1.id.equals(v2.id)) {
                                     System.out.println("同一个窗口两次key不一致key1: " + v1.id + ',' + "key2:" + v2.id);
@@ -337,14 +329,23 @@ public class JobMain {
                                     final Long runTimeSecond = Double.valueOf(runTime).longValue();
                                     r.endTime = defaultSdf.format(new Date(defaultSdf.parse(testTime).getTime() + runTimeSecond));
                                     r.ct = runTimeSecond;
+                                    r.rowkey = String.format("%s|%s",
+                                            new StringBuffer(String.valueOf(r.timeSecond)).reverse().toString(),
+                                            r.eqpID);
                                 } else if (v1.dataVarAllRunCount < v2.dataVarAllRunCount) {
                                     copier.copy(v1, r, null);
                                     r.ct = -1L;
                                     r.endTime = "1970-01-01 01:01:00";
+                                    r.rowkey = String.format("%s|%s",
+                                            new StringBuffer(String.valueOf(r.timeSecond)).reverse().toString(),
+                                            r.eqpID);
                                 } else if (v1.dataVarAllRunCount > v2.dataVarAllRunCount) {
                                     copier.copy(v2, r, null);
                                     r.ct = -1L;
                                     r.endTime = "1970-01-01 01:01:00";
+                                    r.rowkey = String.format("%s|%s",
+                                            new StringBuffer(String.valueOf(r.timeSecond)).reverse().toString(),
+                                            r.eqpID);
                                 } else {
                                     // 重复数据，打标后续过滤
                                     copier.copy(v1, r, null);
@@ -362,6 +363,41 @@ public class JobMain {
 
         final Properties kafkaProducerProps = new Properties();
         kafkaProducerProps.put("bootstrap.servers", bootstrapServers);
+
+        boatEnterTubeCTDataStream.map( e -> {
+            Map<String, Object> dataMap = new HashMap<>(22);
+            dataMap.put("eqp_id", e.eqpID);
+            dataMap.put("site", e.site);
+            dataMap.put("clock", e.clock);
+            dataMap.put("tube_id", e.tubeID);
+            dataMap.put("text1", e.text1);
+            dataMap.put("text2", e.text2);
+            dataMap.put("text3", e.text3);
+            dataMap.put("text4", e.text4);
+            dataMap.put("boat_id", e.boatID);
+            dataMap.put("gas_poci_bubb_leve", e.gasPOClBubbLeve);
+            dataMap.put("gas_n2_poci3_volume_act", e.gasN2_POCl3VolumeAct);
+            dataMap.put("gas_poci_bubb_temp_act", e.gasPOClBubbTempAct);
+            dataMap.put("recipe", e.recipe);
+            dataMap.put("run_count", e.dataVarAllRunCount);
+            dataMap.put("run_no_lef", e.dataVarAllRunNoLef);
+            dataMap.put("vacuum_door_Pressure", e.vacuumDoorPressure);
+            dataMap.put("run_time", e.dataVarAllRunTime);
+            dataMap.put("time_second", e.timeSecond);
+            dataMap.put("test_time", e.testTime);
+            dataMap.put("end_time", e.endTime);
+            dataMap.put("ct", e.ct);
+            dataMap.put("ds", e.ds);
+
+            HbaseClient.putData(parameterTool.get("hbase.table"),
+                    e.rowkey,
+                    parameterTool.get("hbase.column.family1"),
+                    dataMap
+                    );
+            return e;
+        });
+
+        boatEnterTubeCTDataStream.print();
 
         boatEnterTubeCTDataStream.addSink(new FlinkKafkaProducer010<>(
                 etlTargetTopic,

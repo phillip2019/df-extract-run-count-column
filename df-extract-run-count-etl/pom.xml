@@ -137,6 +137,12 @@
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-common</artifactId>
       <version>${hadoop.version}</version>
+      <exclusions>
+        <exclusion>
+          <artifactId>asm</artifactId>
+          <groupId>asm</groupId>
+        </exclusion>
+      </exclusions>
     </dependency>
 
     <dependency>
@@ -254,6 +260,7 @@
                   <!--</includes>-->
                   <includes>
                     <include>**.properties</include>
+                    <include>**.xml</include>
                   </includes>
                   <excludes>
                     <exclude>META-INF/*.SF</exclude>

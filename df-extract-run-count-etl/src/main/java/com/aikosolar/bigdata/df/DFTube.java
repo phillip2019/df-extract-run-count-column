@@ -13,7 +13,7 @@ import java.io.Serializable;
 public class DFTube {
 
   private static final long serialVersionUID = 1L;
-
+  public String rowkey = "";
   public String id = "";
   public String eqpID = "";
   public String site = "";
@@ -41,6 +41,14 @@ public class DFTube {
    * 是否是第一个状态位，默认非第一个状态位
    **/
   public Integer firstStatus = 0;
+
+  public String getRowkey() {
+    return rowkey;
+  }
+
+  public void setRowkey(String rowkey) {
+    this.rowkey = rowkey;
+  }
 
   public String getId() {
     return id;

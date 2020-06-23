@@ -4,25 +4,28 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.*;
 import org.apache.hadoop.hbase.client.*;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.mortbay.util.ajax.JSON;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.*;
-
-import static com.aikosolar.bigdata.df.JobMain.parameterTool;
 
 /**
  * @author xiaowei.song
  */
 public class HbaseClient {
+    private static final Logger logger = LoggerFactory.getLogger(HbaseClient.class);
+
     private static Admin admin;
     public static Connection conn;
 
     static {
         Configuration conf = HBaseConfiguration.create();
-        conf.set("hbase.rootdir", parameterTool.get("hbase.rootdir"));
+   /*     conf.set("hbase.rootdir", parameterTool.get("hbase.rootdir"));
         conf.set("hbase.zookeeper.quorum", parameterTool.get("hbase.zookeeper.quorum"));
         conf.set("hbase.client.scanner.timeout.period", parameterTool.get("hbase.client.scanner.timeout.period"));
-        conf.set("hbase.rpc.timeout", parameterTool.get("hbase.rpc.timeout"));
+        conf.set("hbase.rpc.timeout", parameterTool.get("hbase.rpc.timeout"));*/
         try {
             conn = ConnectionFactory.createConnection(conf);
             admin = conn.getAdmin();
@@ -98,35 +101,65 @@ public class HbaseClient {
 
     /**
      * 向对应列添加数据
-     * @param tablename 表名
-     * @param rowkey 行号
-     * @param famliyname 列族名
+     * @param tableName 表名
+     * @param rowKey 行号
+     * @param familyName 列族名
      * @param column 列名
      * @param data 数据
      * @throws Exception
      */
-    public static void putData(String tablename, String rowkey, String famliyname,String column,String data) throws Exception {
-        Table table = conn.getTable(TableName.valueOf(tablename));
-        Put put = new Put(rowkey.getBytes());
-        put.addColumn(famliyname.getBytes(),column.getBytes(),data.getBytes());
-        table.put(put);
+    public static void putData(String tableName, String rowKey, String familyName, String column, String data) throws Exception {
+        Table table = conn.getTable(TableName.valueOf(tableName));
+        Put put = new Put(rowKey.getBytes());
+        put.addColumn(familyName.getBytes(), column.getBytes(), data.getBytes());
+        try {
+            table.put(put);
+        } catch (Exception e) {
+            logger.error("数据写入HBase失败，数据为: rowKey: {}, cf: {}, column: {}, data: {}, 异常为: ", rowKey, familyName, column, data, e);
+        } finally {
+            table.close();
+        }
+    }
+
+    /**
+     * 添加map数据
+     * @param tableName 表名
+     * @param rowKey 行号
+     * @param familyName 列族名
+     * @param dataMap Map<String, Object> 数据map
+     * @throws Exception
+     */
+    public static void putData(String tableName, String rowKey, String familyName, Map<String, Object> dataMap) throws Exception {
+        Table table = conn.getTable(TableName.valueOf(tableName));
+        Put put = new Put(rowKey.getBytes());
+        dataMap.forEach((k, v) -> {
+            put.addColumn(familyName.getBytes(), k.getBytes(), v.toString().getBytes());
+        });
+        try {
+            table.put(put);
+            logger.info("批量数据写入HBase成功，数据为: rowKey: {}, cf: {}, data: {}, 异常为: ", rowKey, familyName, JSON.toString(dataMap));
+        } catch (Exception e) {
+            logger.error("批量数据写入HBase失败，数据为: rowKey: {}, cf: {}, data: {}, 异常为: ", rowKey, familyName, dataMap, e);
+        } finally {
+            table.close();
+        }
     }
 
     /**
      * 将该单元格加1
-     * @param tablename 表名
-     * @param rowkey 行号
-     * @param famliyname 列族名
+     * @param tableName 表名
+     * @param rowKey 行号
+     * @param familyName 列族名
      * @param column 列名
      * @throws Exception
      */
-    public static void increamColumn(String tablename, String rowkey, String famliyname,String column) throws Exception {
-        String val = getData(tablename, rowkey, famliyname, column);
+    public static void increamColumn(String tableName, String rowKey, String familyName, String column) throws Exception {
+        String val = getData(tableName, rowKey, familyName, column);
         int res = 1;
         if (val != null) {
             res = Integer.valueOf(val) + 1;
         }
-        putData(tablename, rowkey, famliyname, column, String.valueOf(res));
+        putData(tableName, rowKey, familyName, column, String.valueOf(res));
     }
 
     public static void main(String[] args) throws IOException {
